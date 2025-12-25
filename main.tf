@@ -5,48 +5,26 @@ terraform {
       source  = "hashicorp/azurerm"
       version = ">= 4.0"
     }
-    azapi = {
-      source = "azure/azapi"
-    }
-  }
-  backend "azurerm" {
-    resource_group_name  = "tfstate"
-    storage_account_name = "tfstate6389"
-    container_name       = "tfstate"
-    key                  = "terraform.tfstate"
   }
 }
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
 }
-provider "azapi" {
-  subscription_id = var.subscription_id
+
+data "external" "table_schema"{
+  program = ["python", "${path.module}/TableSchemaGenerator.py"]
+
+  query = {
+    file = "${path.module}/sample.json"
+  }
 }
 
 locals {
   key_vault_name     = var.key_vault_id != "" ? element(split("/", var.key_vault_id), length(split("/", var.key_vault_id)) - 1) : azurerm_key_vault.kv[0].name
   key_vault_id_final = var.key_vault_id != "" ? var.key_vault_id : azurerm_key_vault.kv.id
 
-  schema     = jsondecode(file("${path.module}/schema.json"))
-  properties = try(local.schema.properties, {})
-  type_map = {
-    string   = "string"
-    integer  = "long"
-    number   = "real"
-    boolean  = "boolean"
-    datetime = "datetime"
-  }
-
-  generate_columns = [
-    for k, v in local.properties : {
-      name  = k
-      ptype = can(v.type[0]) ? tostring(v.type[0]) : tostring(try(v.type, "string"))
-      col_type = (
-        ptype == "object" || ptype == "array" || contains(keys(v), "properties")
-      ) ? "dynamic" : (try(v.format, "") == "date-time" ? "datetime" : lookup(local.type_map, ptype, "string"))
-    }
-  ]
+  table_columns     = jsondecode(data.external.table_schema.result.columns)
 }
 
 # Create a resource group
@@ -54,14 +32,6 @@ resource "azurerm_resource_group" "rg" {
   name     = "${var.project_name}-rg"
   location = var.region
 }
-
-/**
-resource "azurerm_user_assigned_identity" "uai" {
-    name                = "${var.project_name}-uai"
-    resource_group_name = azurerm_resource_group.rg.name
-    location            = azurerm_resource_group.rg.location
-}
-**/
 
 #region Create the log analytics table
 # Create the Data Collection Endpoint
@@ -85,7 +55,7 @@ resource "azurerm_log_analytics_workspace_table_custom_log" "custom_log" {
     type = "datetime"
   }
   dynamic "column" {
-    for_each = local.generate_columns
+    for_each = local.table_columns
     content {
       name = column.value.name
       type = column.value.type
@@ -93,34 +63,6 @@ resource "azurerm_log_analytics_workspace_table_custom_log" "custom_log" {
   }
 }
 
-/** Create the log analytics table azapi way
-resource "azapi_resource" "law_table"{
-    name = "${var.project_name}_CL"
-    parent_id = var.log_analytics_workspace_id
-    type = "Microsoft.OperationalInsights/workspaces/tables@2022-10-01"
-    body = {
-        "properties" = {
-            "schema" = {
-                "name" = "${var.project_name}_CL",
-                "columns" = concat([
-                    {
-                        "name" = "TimeGenerated"
-                        "type" = "datetime"
-                        "description" = "The time the event was generated"
-                    }
-                ],
-                [
-                    for col in var.table_column :{
-                        "name" = col["name"]
-                        "type" = col["type"]
-                        "description" = ""
-                    }
-                ])
-            }
-        }
-    }
-}
-**/
 # Create the DCR https://github.com/hashicorp/terraform-provider-azurerm/issues/23359
 resource "azurerm_monitor_data_collection_rule" "dcr" {
   name                        = "${var.project_name}-dcr"
@@ -148,10 +90,10 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
       type = "DateTime"
     }
     dynamic "column" {
-      for_each = local.generate_columns
+      for_each = local.table_columns
       content {
         name = column.value.name
-        type = column.value.col_type
+        type = column.value.type
       }
     }
   }

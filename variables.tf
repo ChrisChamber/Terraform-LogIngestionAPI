@@ -26,11 +26,3 @@ variable "app_secret_value" {
   sensitive   = true
   default     = ""
 }
-
-variable "table_column" {
-  description = "The name and data type of the column"
-  type = list(object({
-    name = string
-    type = string
-  }))
-}
