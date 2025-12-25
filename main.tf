@@ -9,7 +9,6 @@ terraform {
 }
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id
 }
 
 data "external" "table_schema"{
@@ -177,9 +176,9 @@ resource "azurerm_windows_function_app" "function_app" {
     "FUNCTIONS_WORKER_RUNTIME" = "powershell"
     "AppId"                    = var.appID                                                                                 # Application ID
     "AppSecret"                = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.kv.name};SecretName=${var.AppSecret})" # Application Secret
-    "DceURI"                   = azurerm_monitor_data_collection_endpoint.dce.ingestion_endpoint
+    "DCEURI"                   = azurerm_monitor_data_collection_endpoint.dce.ingestion_endpoint
     "DcrImmutableId"           = azurerm_monitor_data_collection_rule.dcr.id
-    "TableName"                = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
+    "streamName"                = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
     "TenantId"                 = var.tenantID # Tenant ID
   }
   site_config {
