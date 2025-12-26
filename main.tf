@@ -11,6 +11,8 @@ provider "azurerm" {
   features {}
 }
 
+data "azurerm_client_config" "current" {}
+
 data "external" "table_schema"{
   program = ["python", "${path.module}/TableSchemaGenerator.py"]
 
@@ -21,7 +23,7 @@ data "external" "table_schema"{
 
 locals {
   key_vault_name     = var.key_vault_id != "" ? element(split("/", var.key_vault_id), length(split("/", var.key_vault_id)) - 1) : azurerm_key_vault.kv[0].name
-  key_vault_id_final = var.key_vault_id != "" ? var.key_vault_id : azurerm_key_vault.kv.id
+  key_vault_id_final = var.key_vault_id != "" ? var.key_vault_id : azurerm_key_vault.kv[0].id
 
   table_columns     = jsondecode(data.external.table_schema.result.columns)
 }
@@ -51,7 +53,7 @@ resource "azurerm_log_analytics_workspace_table_custom_log" "custom_log" {
 
   column {
     name = "TimeGenerated"
-    type = "datetime"
+    type = "dateTime"
   }
   dynamic "column" {
     for_each = local.table_columns
@@ -71,22 +73,22 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
 
   destinations {
     log_analytics {
-      name                  = var.log_analytics_workspace_id # Parse this for workspace name
+      name                  = element(split("/", var.log_analytics_workspace_id), length(split("/", var.log_analytics_workspace_id)) - 1) # Parse this for workspace name
       workspace_resource_id = var.log_analytics_workspace_id
     }
   }
 
   data_flow {
     streams        = ["Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"]
-    destinations   = ["${var.log_analytics_workspace_id}"] # Parse this for workspace name
-    output_streams = ["Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"]
+    destinations   = [element(split("/", var.log_analytics_workspace_id), length(split("/", var.log_analytics_workspace_id)) - 1)] # Parse this for workspace name
+    output_stream = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
   }
 
   stream_declaration {
     stream_name = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
     column {
       name = "TimeGenerated"
-      type = "DateTime"
+      type = "datetime"
     }
     dynamic "column" {
       for_each = local.table_columns
@@ -114,7 +116,7 @@ resource "azurerm_role_assignment" "dcr_monitoring_metrics_publisher" {
   scope                = azurerm_monitor_data_collection_rule.dcr.id
   role_definition_name = "Monitoring Metrics Publisher"
   role_definition_id   = data.azurerm_role_definition.monitoring_metrics_publisher.id
-  principal_id         = var.application_principal_id
+  principal_id         = var.appID
 }
 #endregion Create the log analytics table
 
@@ -124,20 +126,13 @@ resource "azurerm_key_vault" "kv" {
   name                     = "${var.project_name}-kv"
   location                 = azurerm_resource_group.rg.location
   resource_group_name      = azurerm_resource_group.rg.name
-  tenant_id                = var.tenantID
+  tenant_id                = data.azurerm_client_config.current.tenant_id
   sku_name                 = "standard"
-  soft_delete_enabled      = true
   purge_protection_enabled = false
-
-  access_policy {
-    tenant_id          = var.tenantID
-    object_id          = azurerm_user_assigned_identity.uai.principal_id
-    secret_permissions = ["get", "list"]
-  }
 }
 
 resource "azurerm_key_vault_secret" "app_secret" {
-  name         = var.app_secret_name
+  name         = var.appID
   key_vault_id = local.key_vault_id_final
   value        = var.app_secret_value
   content_type = "application/octet-stream"
@@ -167,7 +162,6 @@ resource "azurerm_windows_function_app" "function_app" {
   service_plan_id            = azurerm_service_plan.function_app_plan.id
   storage_account_name       = azurerm_storage_account.storage.name
   storage_account_access_key = azurerm_storage_account.storage.primary_access_key
-  version                    = "~4"
 
   identity {
     type = "SystemAssigned"
@@ -175,15 +169,15 @@ resource "azurerm_windows_function_app" "function_app" {
   app_settings = {
     "FUNCTIONS_WORKER_RUNTIME" = "powershell"
     "AppId"                    = var.appID                                                                                 # Application ID
-    "AppSecret"                = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.kv.name};SecretName=${var.AppSecret})" # Application Secret
-    "DCEURI"                   = azurerm_monitor_data_collection_endpoint.dce.ingestion_endpoint
-    "DcrImmutableId"           = azurerm_monitor_data_collection_rule.dcr.id
-    "streamName"                = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
-    "TenantId"                 = var.tenantID # Tenant ID
+    "AppSecret"                = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.kv[0].name};SecretName=${azurerm_key_vault_secret.app_secret.name})" # Application Secret
+    "DceURI"                   = azurerm_monitor_data_collection_endpoint.dce.logs_ingestion_endpoint
+    "DcrImmutableId"           = azurerm_monitor_data_collection_rule.dcr.immutable_id
+    "TableName"                = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
+    "TenantID"                 = data.azurerm_client_config.current.tenant_id # Tenant ID
   }
   site_config {
     application_stack {
-      powershell_version = "7.4"
+      powershell_core_version = "7.4"
     }
   }
 }
@@ -194,9 +188,9 @@ data "azurerm_windows_function_app" "function_app-wrapper" {
 
 # Give function app access to key vault
 resource "azurerm_key_vault_access_policy" "function_app_kv_access" {
-  key_vault_id = var.key_vault_id # existing key vault ID
-  tenant_id    = data.azurerm_windows_function_app.function_app-wrapper.identity.tenant_id
-  object_id    = data.azurerm_windows_function_app.function_app-wrapper.identity.principal_id
+  key_vault_id = local.key_vault_id_final # existing key vault ID
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_windows_function_app.function_app-wrapper.identity[0].principal_id
 
   secret_permissions = [
     "Get",
@@ -208,9 +202,12 @@ resource "azurerm_function_app_function" "function" {
   name             = "${var.project_name}-function"
   function_app_id  = azurerm_windows_function_app.function_app.id
   language         = "PowerShell"
-  script_root_path = "/"       # Update with the path to your function code
-  script_file      = "run.ps1" # Update with your function's entry script
-  entry_point      = "Run"     # Update with your function's entry point
+
+  file{
+    name = "run.ps1"
+    content = filebase64("${path.module}/run.ps1")
+  }
+
   config_json = jsonencode({
     bindings = [
       {
@@ -223,7 +220,7 @@ resource "azurerm_function_app_function" "function" {
       {
         type      = "http"
         direction = "out"
-        name      = "res"
+        name      = "$return"
       }
     ]
   })
@@ -253,7 +250,6 @@ resource "azurerm_api_management_api" "api" {
   api_management_name = azurerm_api_management.apim.name
   revision            = "1"
   display_name        = "${var.project_name} API"
-  path                = var.api_path
   protocols           = ["https"]
 
 }
@@ -273,9 +269,8 @@ resource "azurerm_api_management_backend" "function_app_backend" {
   name                = "${var.project_name}-APIBackend"
   api_management_name = azurerm_api_management_api.api.api_management_name
   resource_group_name = azurerm_resource_group.rg.name
-  backend_id          = "${var.project_name}-function-backend"
   url                 = data.azurerm_windows_function_app.function_app-wrapper.default_hostname
-  protocol            = "https"
+  protocol            = "http"
   description         = "Backend for ${azurerm_windows_function_app.function_app.name} function app"
 
   credentials {
@@ -315,5 +310,5 @@ XML
 #endregion Create the API Management and API
 # Output the api URL
 output "api_url" {
-  value = "${azurerm_api_management_api.api.protocols[0]}://${azurerm_api_management_api.api.api_management_name}.azure-api.net${azurerm_api_management_api_operation.api_operation.url_template}"
+  value = "https://${azurerm_api_management_api.api.api_management_name}.azure-api.net${azurerm_api_management_api_operation.api_operation.url_template}"
 }

@@ -8,7 +8,19 @@ variable "project_name" {
   }
 }
 
+variable "region" {
+  type        = string
+  description = "The Azure region where resources will be created."
+  default     = "East US"
+}
+
 variable "key_vault_id" {
+  type        = string
+  default     = ""
+  description = "The ID of an existing Key Vault to store secrets. If not provided, a new Key Vault will be created."
+}
+
+variable "log_analytics_workspace_id" {
   type        = string
   default     = ""
   description = "The ID of an existing Key Vault to store secrets. If not provided, a new Key Vault will be created."

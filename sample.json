@@ -1,0 +1,13 @@
+{
+    "testnumber": 5,
+    "teststring": "thisisastring",
+    "testobject": {
+        "nestedstring": "nestedstringvalue",
+        "nestednumber": 67
+    },
+    "testarray": [
+        "string1",
+        "string2",
+        "string3"
+    ]
+}
