@@ -8,10 +8,10 @@ variable "project_name" {
   }
 }
 
-variable "region" {
+variable "resource_group_name" {
   type        = string
-  description = "The Azure region where resources will be created."
-  default     = "East US"
+  description = "The name of the resource group where resources will be created."
+  default     = ""
 }
 
 variable "key_vault_id" {
