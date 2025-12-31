@@ -29,7 +29,13 @@ variable "log_analytics_workspace_id" {
 variable "appID" {
   type        = string
   default     = ""
-  description = "Object ID (principal id) of the Azure AD application or managed identity that should be granted Monitoring Metrics Publisher on the DCR."
+  description = "Client ID of the Azure AD application or managed identity that should be granted Monitoring Metrics Publisher on the DCR."
+}
+
+variable "appServicePrincipalID" {
+  type        = string
+  default     = ""
+  description = "Service Principal ID of the Azure AD application or managed identity that should be granted Monitoring Metrics Publisher on the DCR."
 }
 
 variable "app_secret_value" {

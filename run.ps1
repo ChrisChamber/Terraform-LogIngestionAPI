@@ -10,7 +10,7 @@ $AppId = $env:AppId
 $endpoint_uri = $env:DceURI
 $DcrImmutableId = $env:DcrImmutableId
 $streamName = $env:TableName
-
+$uploadResponse = $null
 # Write to the Azure Functions log stream.
 Write-Host "PowerShell HTTP trigger function processed a request."
 
@@ -31,14 +31,23 @@ $bearerToken = (Invoke-RestMethod -Uri $uri -Method "Post" -Body $body -Headers 
 $headers = @{"Authorization" = "Bearer $bearerToken"; "Content-Type" = "application/json" };
 $uri = "$endpoint_uri/dataCollectionRules/$dcrImmutableId/streams/$($streamName)?api-version=2023-01-01"
 
-if ($Request.Body) {
-    $uploadResponse = Invoke-RestMethod -Uri $uri -Method "Post" -Body ($Request.Body) -Headers $headers
+# Convert the body to a JSON array if it is not already one.
+if ($Request.Body -is [System.Array]) {
+    $Log = $Request.Body | ConvertTo-Json
+} else {
+    $Log = $Request.Body | ConvertTo-Json -AsArray
+}
+
+$Log = $Request.Body | ConvertTo-Json -AsArray
+
+if ($Log) {
+    $uploadResponse = Invoke-RestMethod -Uri $uri -Method "Post" -Body $Log -Headers $headers
     $status = [HttpStatusCode]::OK
 }
 else {
     $status = [HttpStatusCode]::BadRequest
 }
 Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
-        StatusCode = if ($status) { $status } else { [HttpStatusCode]::OK }
-        Body       = if ($uploadResponse) { $uploadResponse } else { "Please pass a body in the request" }
+        StatusCode = $status
+        Body       = $uploadResponse
     })

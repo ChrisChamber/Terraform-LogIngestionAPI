@@ -112,7 +112,7 @@ resource "azurerm_role_assignment" "dcr_monitoring_metrics_publisher" {
   scope = azurerm_monitor_data_collection_rule.dcr.id
   #role_definition_name = "Monitoring Metrics Publisher"
   role_definition_id = data.azurerm_role_definition.monitoring_metrics_publisher.id
-  principal_id       = var.appID
+  principal_id       = var.appServicePrincipalID
 }
 #endregion Create the log analytics table
 
