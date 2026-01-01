@@ -139,36 +139,6 @@ resource "azurerm_key_vault_secret" "app_secret" {
 
 #region Create the function app
 
-# turn on application insights
-# This will autogenerate a smart detection rule unmanaged by Terraform
-# https://github.com/hashicorp/terraform-provider-azurerm/issues/18026
-resource "azurerm_application_insights" "functionapp_insights" {
-  name                = "${var.project_name}-ai"
-  location            = data.azurerm_resource_group.rg.location
-  resource_group_name = data.azurerm_resource_group.rg.name
-  workspace_id        = var.log_analytics_workspace_id
-  application_type    = "web"
-}
-
-resource "azurerm_monitor_action_group" "appinsightsactiongroup" {
-  name                = "Application Insights Smart Detection"
-  resource_group_name = data.azurerm_resource_group.rg.name
-  short_name          = "SmartDetect"
-}
-
-resource "azurerm_monitor_smart_detector_alert_rule" "appinsightsalertrule" {
-  name                = "FailureAnomaliesDetector"
-  resource_group_name = data.azurerm_resource_group.rg.name
-  severity            = "Sev0"
-  scope_resource_ids  = [azurerm_application_insights.functionapp_insights.id]
-  frequency           = "PT1M"
-  detector_type       = "FailureAnomaliesDetector"
-
-  action_group {
-    ids = [azurerm_monitor_action_group.appinsightsactiongroup.id]
-  }
-}
-
 resource "azurerm_storage_account" "storage" {
   name                     = lower("${var.project_name}str")
   resource_group_name      = data.azurerm_resource_group.rg.name
