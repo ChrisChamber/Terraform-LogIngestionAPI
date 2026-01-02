@@ -116,27 +116,6 @@ resource "azurerm_role_assignment" "dcr_monitoring_metrics_publisher" {
 }
 #endregion Create the log analytics table
 
-#region Create the key vault
-resource "azurerm_key_vault" "kv" {
-  count                    = var.key_vault_id == "" ? 1 : 0
-  name                     = "${var.project_name}-kv"
-  location                 = data.azurerm_resource_group.rg.location
-  resource_group_name      = data.azurerm_resource_group.rg.name
-  tenant_id                = data.azurerm_client_config.current.tenant_id
-  sku_name                 = "standard"
-  purge_protection_enabled = false
-}
-
-resource "azurerm_key_vault_secret" "app_secret" {
-  name         = var.appID
-  key_vault_id = local.key_vault_id_final
-  value        = var.app_secret_value
-  content_type = "application/octet-stream"
-
-  depends_on = [azurerm_key_vault_access_policy.terraform_kv_access]
-}
-#endregion Create the key vault
-
 #region Create the function app
 
 resource "azurerm_storage_account" "storage" {
@@ -167,7 +146,7 @@ resource "azurerm_windows_function_app" "function_app" {
   }
   app_settings = {
     "AppId"          = var.appID                                                                                                               # Application ID
-    "AppSecret"      = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.kv[0].name};SecretName=${azurerm_key_vault_secret.app_secret.name})" # Application Secret
+    "AppSecret"      = var.app_secret_value # Application Secret
     "DceURI"         = azurerm_monitor_data_collection_endpoint.dce.logs_ingestion_endpoint
     "DcrImmutableId" = azurerm_monitor_data_collection_rule.dcr.immutable_id
     "TableName"      = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
@@ -183,33 +162,6 @@ resource "azurerm_windows_function_app" "function_app" {
 data "azurerm_windows_function_app" "function_app-wrapper" {
   name                = azurerm_windows_function_app.function_app.name
   resource_group_name = data.azurerm_resource_group.rg.name
-}
-
-# Give function app access to key vault
-resource "azurerm_key_vault_access_policy" "function_app_kv_access" {
-  key_vault_id = local.key_vault_id_final # existing key vault ID
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = data.azurerm_windows_function_app.function_app-wrapper.identity[0].principal_id
-
-  secret_permissions = [
-    "Get",
-    "List"
-  ]
-}
-
-# Give terraform access to key vault
-resource "azurerm_key_vault_access_policy" "terraform_kv_access" {
-  key_vault_id = local.key_vault_id_final # existing key vault ID
-  tenant_id    = data.azurerm_client_config.current.tenant_id
-  object_id    = data.azurerm_client_config.current.object_id
-
-  secret_permissions = [
-    "Get",
-    "List",
-    "Set",
-    "Delete",
-    "Purge"
-  ]
 }
 
 resource "azurerm_function_app_function" "function" {
@@ -326,4 +278,8 @@ XML
 # Output the api URL
 output "api_url" {
   value = "https://${azurerm_api_management_api.api.api_management_name}.azure-api.net${azurerm_api_management_api_operation.api_operation.url_template}"
+}
+
+output "function_app_name" {
+  value = azurerm_windows_function_app.function_app.name
 }
