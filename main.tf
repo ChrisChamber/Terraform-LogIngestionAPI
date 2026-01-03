@@ -19,9 +19,6 @@ data "external" "table_schema" {
 }
 
 locals {
-  key_vault_name     = var.key_vault_id != "" ? element(split("/", var.key_vault_id), length(split("/", var.key_vault_id)) - 1) : azurerm_key_vault.kv[0].name
-  key_vault_id_final = var.key_vault_id != "" ? var.key_vault_id : azurerm_key_vault.kv[0].id
-
   table_columns = jsondecode(data.external.table_schema.result.columns)
 }
 
