@@ -14,10 +14,10 @@ variable "resource_group_name" {
   default     = ""
 }
 
-variable "key_vault_id" {
+variable "tenant_id" {
   type        = string
   default     = ""
-  description = "The ID of an existing Key Vault to store secrets. If not provided, a new Key Vault will be created."
+  description = "The Tenant ID of the Azure Active Directory."
 }
 
 variable "log_analytics_workspace_id" {

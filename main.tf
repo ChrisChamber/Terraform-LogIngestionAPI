@@ -8,8 +8,6 @@ terraform {
   }
 }
 
-data "azurerm_client_config" "current" {}
-
 data "external" "table_schema" {
   program = ["python", "${path.module}/TableSchemaGenerator.py"]
 
@@ -147,7 +145,7 @@ resource "azurerm_windows_function_app" "function_app" {
     "DceURI"         = azurerm_monitor_data_collection_endpoint.dce.logs_ingestion_endpoint
     "DcrImmutableId" = azurerm_monitor_data_collection_rule.dcr.immutable_id
     "TableName"      = "Custom-${azurerm_log_analytics_workspace_table_custom_log.custom_log.name}"
-    "TenantID"       = data.azurerm_client_config.current.tenant_id # Tenant ID
+    "TenantID"       = var.tenant_id # Tenant ID
   }
   site_config {
     application_stack {
